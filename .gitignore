@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+sep_sections.json
+sep_chunks.json
+sep_embeddings.npy
+sep_entries.json
+sep_entry_embeddings.npy

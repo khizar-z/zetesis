@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__/
+logs/
+*.pyc
+sep_sections.json
+sep_sections.sample.json
+sep_chunks.json
+sep_chunks.sample.json
+sep_embeddings.npy
+sep_embeddings.sample.npy

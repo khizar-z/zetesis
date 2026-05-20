@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="840" viewBox="0 0 1400 840" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="220" y1="80" x2="1180" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8F4ED"/>
+      <stop offset="1" stop-color="#F2EBE0"/>
+    </linearGradient>
+    <radialGradient id="glowLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(250 160) rotate(90) scale(220 280)">
+      <stop stop-color="#D6AE86" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#D6AE86" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1170 240) rotate(90) scale(220 280)">
+      <stop stop-color="#8D6849" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#8D6849" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="180" y="198" width="1040" height="560" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="18"/>
+      <feGaussianBlur stdDeviation="24"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.305882 0 0 0 0 0.2 0 0 0 0 0.0862745 0 0 0 0.12 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="840" fill="url(#bg)"/>
+  <circle cx="250" cy="160" r="250" fill="url(#glowLeft)"/>
+  <circle cx="1170" cy="240" r="240" fill="url(#glowRight)"/>
+
+  <text x="700" y="120" fill="#8F4F1C" font-family="Georgia, serif" font-size="24" font-weight="700" letter-spacing="5.5" text-anchor="middle">SEMANTIC SEP SEARCH</text>
+  <text x="700" y="195" fill="#241A10" font-family="Georgia, serif" font-size="88" font-weight="700" text-anchor="middle">Zetesis</text>
+  <text x="700" y="248" fill="#6F5C49" font-family="Arial, sans-serif" font-size="32" text-anchor="middle">Search the Stanford Encyclopedia of Philosophy by meaning, not just by matching words.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="220" y="228" width="960" height="482" rx="28" fill="#FFFBF6" fill-opacity=".92"/>
+  </g>
+
+  <text x="290" y="292" fill="#6F5C49" font-family="Arial, sans-serif" font-size="22" font-weight="700">Ask a philosophical question</text>
+  <rect x="280" y="318" width="840" height="78" rx="22" fill="#FFFFFF" stroke="#D6CBC0" stroke-width="2"/>
+  <text x="318" y="366" fill="#7A6B5E" font-family="Arial, sans-serif" font-size="30">relationship between free will and moral responsibility</text>
+
+  <rect x="924" y="318" width="196" height="78" rx="22" fill="#8F4F1C"/>
+  <text x="1022" y="366" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="700" text-anchor="middle">Search</text>
+
+  <rect x="280" y="430" width="330" height="66" rx="33" fill="#F8F1E7" stroke="#E1D5C8" stroke-width="2"/>
+  <text x="445" y="470" fill="#6F5C49" font-family="Arial, sans-serif" font-size="24" text-anchor="middle">what is truth</text>
+  <rect x="624" y="430" width="496" height="66" rx="33" fill="#F8F1E7" stroke="#E1D5C8" stroke-width="2"/>
+  <text x="872" y="470" fill="#6F5C49" font-family="Arial, sans-serif" font-size="24" text-anchor="middle">Parfit's reductionist view of personal identity</text>
+
+  <text x="282" y="544" fill="#6F5C49" font-family="Arial, sans-serif" font-size="24" font-weight="700">2 results for “free will and moral responsibility”</text>
+
+  <rect x="280" y="572" width="840" height="98" rx="22" fill="#FFFDF9" stroke="#E2D7CA" stroke-width="2"/>
+  <text x="312" y="603" fill="#8F4F1C" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="2.5">SEP PASSAGE</text>
+  <text x="312" y="634" fill="#241A10" font-family="Georgia, serif" font-size="34" font-weight="700">Compatibilism</text>
+  <text x="312" y="660" fill="#6F5C49" font-family="Arial, sans-serif" font-size="20">Introduction</text>
+  <text x="840" y="606" fill="#723B10" font-family="Arial, sans-serif" font-size="22" font-weight="700">Read in SEP →</text>
+  <text x="312" y="699" fill="#31261B" font-family="Arial, sans-serif" font-size="22">Compatibilism is the view that free will and determinism can both be true...</text>
+
+  <rect x="280" y="690" width="840" height="98" rx="22" fill="#FFFDF9" stroke="#E2D7CA" stroke-width="2"/>
+  <text x="312" y="721" fill="#8F4F1C" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="2.5">SEP PASSAGE</text>
+  <text x="312" y="752" fill="#241A10" font-family="Georgia, serif" font-size="34" font-weight="700">Moral Responsibility</text>
+  <text x="312" y="778" fill="#6F5C49" font-family="Arial, sans-serif" font-size="20">Free Will and Control</text>
+</svg>
