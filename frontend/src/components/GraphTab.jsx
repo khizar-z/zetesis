@@ -128,7 +128,6 @@ export default function GraphTab({
   const nodeCount = graphData?.nodes.length || 0;
   const explicitEdgeCount = graphData?.explicit_edges.length || 0;
   const semanticEdgeCount = graphData?.semantic_edges.length || 0;
-  const totalEdgeCount = explicitEdgeCount + semanticEdgeCount;
   const isDenseGraph = hasGraph
     ? shouldCondenseSemanticEdges({
         semanticEdgeCount,
@@ -141,12 +140,7 @@ export default function GraphTab({
     <section className="graph-tab">
       <div className="graph-tab__header">
         <div>
-          <p className="graph-tab__eyebrow">Second Interface</p>
           <h2>{formatViewTitle(graphView, selectedGraphNode)}</h2>
-          <p className="graph-tab__copy">
-            Explore a single SEP entry's local neighborhood through direct cross-links and strict
-            semantic similarity.
-          </p>
         </div>
 
         <div className="graph-tab__actions">
@@ -205,7 +199,6 @@ export default function GraphTab({
               {pluralize(explicitEdgeCount, "edge", "edges")} · {semanticEdgeCount} semantic{" "}
               {pluralize(semanticEdgeCount, "edge", "edges")}
             </p>
-            <p>{totalEdgeCount} total graph relationships loaded from the API.</p>
             {isDenseGraph ? (
               <p className="graph-summary__note">
                 Dense views emphasize the strongest semantic ties so the graph stays legible and

@@ -90,6 +90,14 @@ a {
   padding: 4rem 0 4.5rem;
 }
 
+.layout--home {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
 .hero {
   display: grid;
   gap: 1rem;
@@ -112,6 +120,30 @@ a {
   font-size: clamp(3.4rem, 7vw, 5.8rem);
   line-height: 0.95;
   letter-spacing: -0.04em;
+}
+
+.hero__brand {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.hero__brand:hover {
+  opacity: 0.82;
+}
+
+.hero__brand:focus-visible {
+  outline: 2px solid rgba(143, 79, 28, 0.3);
+  outline-offset: 6px;
+  border-radius: 0.45rem;
 }
 
 .hero__copy {
@@ -227,21 +259,6 @@ a {
   margin-top: 0.9rem;
 }
 
-.graph-intro {
-  width: min(100%, 48rem);
-  margin-top: 1.35rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--line);
-  border-radius: 1.25rem;
-  background: rgba(255, 251, 245, 0.76);
-  color: var(--muted);
-  box-shadow: var(--shadow);
-}
-
-.graph-intro p {
-  margin: 0;
-}
-
 .example-list__button {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -323,26 +340,11 @@ a {
   gap: 0.65rem;
 }
 
-.graph-tab__eyebrow {
-  margin: 0 0 0.2rem;
-  color: var(--accent);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
 .graph-tab h2 {
   margin: 0;
   font-family: "Newsreader", serif;
   font-size: 2rem;
   line-height: 1.03;
-}
-
-.graph-tab__copy {
-  max-width: 42rem;
-  margin: 0.45rem 0 0;
-  color: var(--muted);
 }
 
 .graph-tab__back,

@@ -10,7 +10,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:800
 
 const EXAMPLE_QUERIES = [
   "relationship between free will and moral responsibility",
-  "Parfit's reductionist view of personal identity",
+  "details of the nonidentity problem",
   "what is truth",
 ];
 
@@ -319,6 +319,31 @@ export default function App() {
     updateHistory({ page: "search" }, { replace });
   }
 
+  function handleReturnHome() {
+    searchAbortControllerRef.current?.abort();
+    graphAbortControllerRef.current?.abort();
+
+    const emptyGraphView = {
+      kind: "empty",
+      centeredSlug: null,
+    };
+
+    startTransition(() => {
+      setQuery("");
+      setResults([]);
+      setStatus("idle");
+      setSubmittedQuery("");
+      setErrorMessage("");
+      setGraphData(null);
+      setGraphStatus("idle");
+      setGraphErrorMessage("");
+      setGraphView(emptyGraphView);
+      setSelectedGraphNode(null);
+    });
+
+    navigateToSearch({ replace: route.page === "search" });
+  }
+
   function handleOpenGraphForEntry(entry) {
     if (!entry?.slug) {
       return;
@@ -388,26 +413,29 @@ export default function App() {
   const groupedResults = groupResultsByEntry(results);
   const entryCount = groupedResults.length;
   const topResult = results[0] || null;
+  const isCenteredHome = route.page === "search" && showInitialState;
 
   return (
     <div className="page-shell">
       <div className="page-shell__glow page-shell__glow--left" />
       <div className="page-shell__glow page-shell__glow--right" />
 
-      <main className="layout">
+      <main className={`layout${isCenteredHome ? " layout--home" : ""}`}>
         {route.page === "search" ? (
           <>
             <section className="hero">
-              <p className="hero__kicker">Semantic SEP Explorer</p>
-              <h1>Zetesis</h1>
+              <h1>
+                <button className="hero__brand" type="button" onClick={handleReturnHome}>
+                  Zetesis
+                </button>
+              </h1>
               <p className="hero__copy">
-                Search the Stanford Encyclopedia of Philosophy by meaning, not just by matching
-                words.
+                Search and navigate the Stanford Encyclopedia of Philosophy.
               </p>
 
               <form className="search-panel" onSubmit={handleSubmit}>
                 <label className="search-panel__label" htmlFor="search-query">
-                  Ask a philosophical question
+                  Ask a philosophical question or look up a philosophical term
                 </label>
                 <div className="search-panel__controls">
                   <input
@@ -431,21 +459,24 @@ export default function App() {
                 </div>
               </form>
 
-              <div className="example-list" aria-label="Example queries">
-                {EXAMPLE_QUERIES.map((example) => (
-                  <button
-                    key={example}
-                    className="example-list__button"
-                    type="button"
-                    onClick={() => handleExampleClick(example)}
-                  >
-                    {example}
-                  </button>
-                ))}
-              </div>
+              {showInitialState ? (
+                <div className="example-list" aria-label="Example queries">
+                  {EXAMPLE_QUERIES.map((example) => (
+                    <button
+                      key={example}
+                      className="example-list__button"
+                      type="button"
+                      onClick={() => handleExampleClick(example)}
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </section>
 
-            <section className="results-panel">
+            {!showInitialState ? (
+              <section className="results-panel">
               {status === "loading" ? (
                 <div className="status-card" role="status" aria-live="polite">
                   <div className="status-card__spinner" />
@@ -460,16 +491,6 @@ export default function App() {
                 <div className="status-card status-card--error" role="alert">
                   <h2>Search unavailable</h2>
                   <p>{errorMessage}</p>
-                </div>
-              ) : null}
-
-              {showInitialState ? (
-                <div className="status-card">
-                  <h2>Start with a concept, problem, or thinker.</h2>
-                  <p>
-                    Zetesis returns full SEP passages, then lets you open the exact section on
-                    plato.stanford.edu.
-                  </p>
                 </div>
               ) : null}
 
@@ -517,38 +538,35 @@ export default function App() {
                   </div>
                 </>
               ) : null}
-            </section>
+              </section>
+            ) : null}
           </>
         ) : (
           <>
             <section className="hero hero--graph">
-              <p className="hero__kicker">Semantic SEP Explorer</p>
-              <h1>Zetesis</h1>
+              <h1>
+                <button className="hero__brand" type="button" onClick={handleReturnHome}>
+                  Zetesis
+                </button>
+              </h1>
               <p className="hero__copy">
                 Trace how a selected SEP entry connects through direct references and strict
                 semantic similarity.
               </p>
-
-              <div className="graph-intro">
-                <p>
-                  The graph opens around one SEP entry at a time. Start from search, then follow
-                  one-hop neighborhoods through direct references and semantic neighbors.
-                </p>
-              </div>
             </section>
 
-        <GraphTab
-          graphData={graphData}
-          graphStatus={graphStatus}
-          graphErrorMessage={graphErrorMessage}
-          graphView={graphView}
-          selectedGraphNode={selectedGraphNode}
-          onBack={handleGraphBack}
-          onBackToSearch={handleBackToSearchFromGraph}
-          onGraphNodeSelect={handleOpenGraphForEntry}
-          onSearchEntry={handleSearchEntryFromGraph}
-          onRetryGraph={handleRetryGraph}
-        />
+            <GraphTab
+              graphData={graphData}
+              graphStatus={graphStatus}
+              graphErrorMessage={graphErrorMessage}
+              graphView={graphView}
+              selectedGraphNode={selectedGraphNode}
+              onBack={handleGraphBack}
+              onBackToSearch={handleBackToSearchFromGraph}
+              onGraphNodeSelect={handleOpenGraphForEntry}
+              onSearchEntry={handleSearchEntryFromGraph}
+              onRetryGraph={handleRetryGraph}
+            />
           </>
         )}
       </main>
