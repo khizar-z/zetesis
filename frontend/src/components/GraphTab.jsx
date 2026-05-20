@@ -1,4 +1,5 @@
 import GraphCanvas from "./GraphCanvas";
+import RelatedConcepts from "./RelatedConcepts";
 import {
   DEFAULT_SUBDISCIPLINE_COLOR,
   SUBDISCIPLINE_COLORS,
@@ -113,10 +114,15 @@ export default function GraphTab({
   graphErrorMessage,
   graphView,
   selectedGraphNode,
+  onBack,
   onBackToSearch,
   onGraphNodeSelect,
   onSearchEntry,
   onRetryGraph,
+  relatedConcepts,
+  relatedStatus,
+  relatedErrorMessage,
+  onOpenRelatedConcept,
 }) {
   const hasGraph = Boolean(graphData);
   const isLoading = graphStatus === "loading";
@@ -148,11 +154,14 @@ export default function GraphTab({
           </p>
         </div>
 
-        {graphView.kind === "neighborhood" ? (
+        <div className="graph-tab__actions">
+          <button className="graph-tab__back" type="button" onClick={onBack}>
+            Back
+          </button>
           <button className="graph-tab__back" type="button" onClick={onBackToSearch}>
             Back to search
           </button>
-        ) : null}
+        </div>
       </div>
 
       {showInitialState ? (
@@ -241,6 +250,14 @@ export default function GraphTab({
           ) : null}
 
           <GraphLegend />
+
+          <RelatedConcepts
+            entryTitle={selectedGraphNode?.title || ""}
+            concepts={relatedConcepts}
+            status={relatedStatus}
+            errorMessage={relatedErrorMessage}
+            onOpenConcept={onOpenRelatedConcept}
+          />
         </>
       ) : null}
     </section>
