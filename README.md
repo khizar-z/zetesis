@@ -52,8 +52,7 @@ The graph is intentionally local rather than global-first:
 2. Explicit edges come from SEP's own internal links between `/entries/...` pages.
 3. Semantic edges come from cosine similarity between entry embeddings.
 4. Semantic edges are deliberately strict: an edge is kept only when similarity is above `0.85` and the two entries are in each other's top 5 semantic neighbors.
-5. The frontend does not open to a giant full-corpus graph. Instead, search results seed a one-hop neighborhood for a specific SEP entry.
-6. A lightweight `Related Concepts` strip under search results exposes the top semantic neighbors of the best-matching entry.
+5. The frontend does not open to a giant full-corpus graph. Instead, search results open a dedicated graph page for a specific SEP entry's one-hop neighborhood.
 
 ## Stack
 
@@ -236,12 +235,9 @@ Validation rules:
 
 ```http
 GET /graph/neighborhood?slug=truth&hops=1
-GET /graph/related?slug=truth&limit=5
 ```
 
 `/graph/neighborhood` returns one SEP entry plus its local explicit and semantic neighbors.
-
-`/graph/related` returns a small list of the strongest semantic neighbors for the given entry. The frontend uses this for the `Related Concepts` strip under search results.
 
 ## Rebuild The Corpus From Scratch
 
@@ -338,7 +334,7 @@ Implemented:
 - embedding generation
 - pgvector schema + loader
 - retrieval and reranking
-- concept graph + related concepts strip
+- concept graph route
 - FastAPI backend
 - React frontend
 - manual retrieval evaluation script

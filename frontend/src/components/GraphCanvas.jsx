@@ -64,6 +64,48 @@ function createSemanticOpacityScale(edges) {
   return d3.scaleLinear().domain([minSimilarity, maxSimilarity]).range([0.05, 0.2]);
 }
 
+function getChargeStrength(nodeCount) {
+  if (nodeCount <= 24) {
+    return -90;
+  }
+
+  if (nodeCount <= 48) {
+    return -72;
+  }
+
+  if (nodeCount <= 96) {
+    return -52;
+  }
+
+  if (nodeCount > 1500) {
+    return -10;
+  }
+
+  if (nodeCount > 500) {
+    return -16;
+  }
+
+  return -26;
+}
+
+function getLinkDistance(nodeCount, weight) {
+  const normalizedWeight = Math.min(Number(weight) || 1, 6);
+
+  if (nodeCount <= 24) {
+    return 162 - normalizedWeight * 10;
+  }
+
+  if (nodeCount <= 48) {
+    return 142 - normalizedWeight * 9;
+  }
+
+  if (nodeCount <= 96) {
+    return 118 - normalizedWeight * 8;
+  }
+
+  return 76 - normalizedWeight * 6;
+}
+
 function getTickCount(nodeCount) {
   if (nodeCount > 1500) {
     return 160;
@@ -74,6 +116,84 @@ function getTickCount(nodeCount) {
   }
 
   return 260;
+}
+
+function fitNodesToViewport(nodes, viewport, nodeRadiusScale, focusNode) {
+  if (!nodes.length) {
+    return;
+  }
+
+  const padding = nodes.length <= 40 ? 74 : nodes.length <= 90 ? 64 : 54;
+  const maxScale = nodes.length <= 24 ? 4.4 : nodes.length <= 48 ? 3.8 : nodes.length <= 96 ? 3.1 : 2.2;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (const node of nodes) {
+    const radius = nodeRadiusScale(node.degree) + 10;
+    minX = Math.min(minX, node.x - radius);
+    maxX = Math.max(maxX, node.x + radius);
+    minY = Math.min(minY, node.y - radius);
+    maxY = Math.max(maxY, node.y + radius);
+  }
+
+  const boxWidth = Math.max(maxX - minX, 1);
+  const boxHeight = Math.max(maxY - minY, 1);
+  const availableWidth = Math.max(viewport.width - padding * 2, 1);
+  const availableHeight = Math.max(viewport.height - padding * 2, 1);
+  const scale = clamp(Math.min(availableWidth / boxWidth, availableHeight / boxHeight), 1, maxScale);
+  const sourceCenterX = focusNode ? focusNode.x : (minX + maxX) / 2;
+  const sourceCenterY = focusNode ? focusNode.y : (minY + maxY) / 2;
+  const targetCenterX = viewport.width / 2;
+  const targetCenterY = viewport.height / 2;
+
+  const transformed = nodes.map((node) => ({
+    node,
+    x: (node.x - sourceCenterX) * scale + targetCenterX,
+    y: (node.y - sourceCenterY) * scale + targetCenterY,
+  }));
+
+  let transformedMinX = Infinity;
+  let transformedMaxX = -Infinity;
+  let transformedMinY = Infinity;
+  let transformedMaxY = -Infinity;
+
+  for (const item of transformed) {
+    const radius = nodeRadiusScale(item.node.degree) + 10;
+    transformedMinX = Math.min(transformedMinX, item.x - radius);
+    transformedMaxX = Math.max(transformedMaxX, item.x + radius);
+    transformedMinY = Math.min(transformedMinY, item.y - radius);
+    transformedMaxY = Math.max(transformedMaxY, item.y + radius);
+  }
+
+  let translateX = 0;
+  if (transformedMinX < padding) {
+    translateX = padding - transformedMinX;
+  }
+  if (transformedMaxX + translateX > viewport.width - padding) {
+    translateX -= transformedMaxX + translateX - (viewport.width - padding);
+  }
+
+  let translateY = 0;
+  if (transformedMinY < padding) {
+    translateY = padding - transformedMinY;
+  }
+  if (transformedMaxY + translateY > viewport.height - padding) {
+    translateY -= transformedMaxY + translateY - (viewport.height - padding);
+  }
+
+  for (const item of transformed) {
+    item.node.x = item.x + translateX;
+    item.node.y = item.y + translateY;
+    if ("fx" in item.node && item.node.fx != null) {
+      item.node.fx = item.node.x;
+    }
+    if ("fy" in item.node && item.node.fy != null) {
+      item.node.fy = item.node.y;
+    }
+  }
 }
 
 function drawRoundedRect(context, x, y, width, height, radius) {
@@ -224,9 +344,7 @@ export default function GraphCanvas({ data, focusedSlug, onNodeSelect }) {
       .forceSimulation(simulationNodes)
       .force(
         "charge",
-        d3
-          .forceManyBody()
-          .strength(data.nodes.length > 1500 ? -10 : data.nodes.length > 500 ? -16 : -26),
+        d3.forceManyBody().strength(getChargeStrength(data.nodes.length)),
       )
       .force("center", d3.forceCenter(viewport.width / 2, viewport.height / 2))
       .force(
@@ -251,7 +369,7 @@ export default function GraphCanvas({ data, focusedSlug, onNodeSelect }) {
           ? d3
               .forceLink(explicitLinks)
               .id((node) => node.slug)
-              .distance((link) => 70 - Math.min(Number(link.weight) || 1, 6) * 6)
+              .distance((link) => getLinkDistance(data.nodes.length, link.weight))
               .strength(0.14)
           : null,
       )
@@ -263,6 +381,7 @@ export default function GraphCanvas({ data, focusedSlug, onNodeSelect }) {
       simulation.tick();
     }
     simulation.stop();
+    fitNodesToViewport(simulationNodes, viewport, nodeRadiusScale, focusNode);
 
     graphRef.current = {
       simulation,

@@ -1,5 +1,4 @@
 import GraphCanvas from "./GraphCanvas";
-import RelatedConcepts from "./RelatedConcepts";
 import {
   DEFAULT_SUBDISCIPLINE_COLOR,
   SUBDISCIPLINE_COLORS,
@@ -119,10 +118,6 @@ export default function GraphTab({
   onGraphNodeSelect,
   onSearchEntry,
   onRetryGraph,
-  relatedConcepts,
-  relatedStatus,
-  relatedErrorMessage,
-  onOpenRelatedConcept,
 }) {
   const hasGraph = Boolean(graphData);
   const isLoading = graphStatus === "loading";
@@ -169,8 +164,8 @@ export default function GraphTab({
           <div>
             <h2>No entry selected yet</h2>
             <p>
-              Search SEP first, then open an entry from the results or from the Related Concepts
-              strip to render its one-hop neighborhood.
+              Search SEP first, then open an entry from the results list to render its one-hop
+              neighborhood.
             </p>
           </div>
         </div>
@@ -250,14 +245,6 @@ export default function GraphTab({
           ) : null}
 
           <GraphLegend />
-
-          <RelatedConcepts
-            entryTitle={selectedGraphNode?.title || ""}
-            concepts={relatedConcepts}
-            status={relatedStatus}
-            errorMessage={relatedErrorMessage}
-            onOpenConcept={onOpenRelatedConcept}
-          />
         </>
       ) : null}
     </section>

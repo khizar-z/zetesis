@@ -133,27 +133,6 @@ def create_app(
             logger.exception("Neighborhood graph retrieval failed for slug: %s", cleaned_slug)
             raise HTTPException(status_code=503, detail="Graph data is unavailable.") from exc
 
-    @app.get("/graph/related")
-    async def graph_related_endpoint(
-        request: Request,
-        slug: str = Query(..., min_length=1),
-        limit: int = Query(5, ge=1, le=10),
-    ) -> list[dict[str, Any]]:
-        cleaned_slug = slug.strip()
-        if not cleaned_slug:
-            raise HTTPException(status_code=400, detail="Entry slug must not be empty.")
-
-        service = get_graph_service(request)
-        try:
-            return service.get_related_concepts(cleaned_slug, limit=limit)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except LookupError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except psycopg.Error as exc:
-            logger.exception("Related concept lookup failed for slug: %s", cleaned_slug)
-            raise HTTPException(status_code=503, detail="Graph data is unavailable.") from exc
-
     return app
 
 

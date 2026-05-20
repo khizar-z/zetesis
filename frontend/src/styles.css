@@ -316,6 +316,13 @@ a {
   gap: 1rem;
 }
 
+.graph-tab__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
 .graph-tab__eyebrow {
   margin: 0 0 0.2rem;
   color: var(--accent);
@@ -910,5 +917,10 @@ a {
 
   .graph-legend__colors {
     grid-template-columns: 1fr;
+  }
+
+  .graph-tab__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

@@ -68,24 +68,6 @@ FROM semantic_edges
 WHERE source_slug = ANY(%s) OR target_slug = ANY(%s);
 """.strip()
 
-RELATED_CONCEPTS_SQL = """
-SELECT
-    other.entry_slug,
-    other.entry_title,
-    other.subdiscipline,
-    se.similarity
-FROM semantic_edges AS se
-JOIN entries AS other
-    ON other.entry_slug = CASE
-        WHEN se.source_slug = %s THEN se.target_slug
-        ELSE se.source_slug
-    END
-WHERE se.source_slug = %s OR se.target_slug = %s
-ORDER BY se.similarity DESC, other.entry_title, other.entry_slug
-LIMIT %s;
-""".strip()
-
-
 @dataclass(frozen=True)
 class ExplicitEdge:
     source: str
@@ -127,22 +109,6 @@ class GraphNode:
             "title": self.title,
             "subdiscipline": self.subdiscipline,
             "degree": self.degree,
-        }
-
-
-@dataclass(frozen=True)
-class RelatedConcept:
-    slug: str
-    title: str
-    subdiscipline: str | None
-    similarity: float
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "slug": self.slug,
-            "title": self.title,
-            "subdiscipline": self.subdiscipline,
-            "similarity": self.similarity,
         }
 
 
@@ -376,38 +342,6 @@ class GraphService:
             semantic_edges = self._fetch_semantic_edges(conn, node_slugs)
 
         return self._build_graph_response(node_rows, explicit_edges, semantic_edges)
-
-    def get_related_concepts(self, slug: str, *, limit: int = 5) -> list[dict[str, Any]]:
-        cleaned_slug = slug.strip()
-        if not cleaned_slug:
-            raise ValueError("Entry slug must not be empty.")
-        if limit <= 0:
-            raise ValueError("limit must be positive.")
-
-        with self._connect() as conn:
-            entry = self._fetch_entry(conn, cleaned_slug)
-            if entry is None:
-                raise LookupError(f"Unknown entry slug: {cleaned_slug}")
-
-            with conn.cursor() as cur:
-                cur.execute(
-                    RELATED_CONCEPTS_SQL,
-                    (cleaned_slug, cleaned_slug, cleaned_slug, limit),
-                )
-                rows = cur.fetchall()
-
-        return [
-            RelatedConcept(
-                slug=str(row["entry_slug"]),
-                title=str(row["entry_title"]),
-                subdiscipline=(
-                    None if row["subdiscipline"] is None else str(row["subdiscipline"])
-                ),
-                similarity=float(row["similarity"]),
-            ).to_dict()
-            for row in rows
-        ]
-
 
 def create_graph_service(
     *,

@@ -22,10 +22,6 @@ function buildNeighborhoodUrl(slug, hops = 1) {
   return `${API_BASE_URL}/graph/neighborhood?slug=${encodeURIComponent(slug)}&hops=${hops}`;
 }
 
-function buildRelatedConceptsUrl(slug, limit = 5) {
-  return `${API_BASE_URL}/graph/related?slug=${encodeURIComponent(slug)}&limit=${limit}`;
-}
-
 function getEntryPageUrl(url) {
   return url.split("#")[0];
 }
@@ -126,13 +122,9 @@ export default function App() {
     centeredSlug: null,
   });
   const [selectedGraphNode, setSelectedGraphNode] = useState(null);
-  const [relatedConcepts, setRelatedConcepts] = useState([]);
-  const [relatedStatus, setRelatedStatus] = useState("idle");
-  const [relatedErrorMessage, setRelatedErrorMessage] = useState("");
 
   const searchAbortControllerRef = useRef(null);
   const graphAbortControllerRef = useRef(null);
-  const relatedAbortControllerRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -169,7 +161,6 @@ export default function App() {
         void loadNeighborhood({ slug: nextRoute.slug });
       } else {
         graphAbortControllerRef.current?.abort();
-        relatedAbortControllerRef.current?.abort();
       }
     }
 
@@ -183,7 +174,6 @@ export default function App() {
     return () => {
       searchAbortControllerRef.current?.abort();
       graphAbortControllerRef.current?.abort();
-      relatedAbortControllerRef.current?.abort();
     };
   }, []);
 
@@ -210,51 +200,6 @@ export default function App() {
     startTransition(() => {
       setRoute(nextRoute);
     });
-  }
-
-  async function loadRelatedConcepts(entrySlug) {
-    if (!entrySlug) {
-      setRelatedConcepts([]);
-      setRelatedStatus("idle");
-      setRelatedErrorMessage("");
-      return;
-    }
-
-    relatedAbortControllerRef.current?.abort();
-    const controller = new AbortController();
-    relatedAbortControllerRef.current = controller;
-
-    setRelatedConcepts([]);
-    setRelatedStatus("loading");
-    setRelatedErrorMessage("");
-
-    try {
-      const response = await fetch(buildRelatedConceptsUrl(entrySlug), {
-        signal: controller.signal,
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const detail =
-          payload && typeof payload.detail === "string"
-            ? payload.detail
-            : "Could not load related concepts.";
-        throw new Error(detail);
-      }
-
-      startTransition(() => {
-        setRelatedConcepts(Array.isArray(payload) ? payload : []);
-        setRelatedStatus("success");
-      });
-    } catch (error) {
-      if (error.name === "AbortError") {
-        return;
-      }
-
-      setRelatedConcepts([]);
-      setRelatedStatus("error");
-      setRelatedErrorMessage(error.message || "Could not load related concepts.");
-    }
   }
 
   async function runSearch(nextQuery) {
@@ -325,7 +270,6 @@ export default function App() {
       kind: "neighborhood",
       centeredSlug: node.slug,
     });
-    void loadRelatedConcepts(node.slug);
 
     try {
       const response = await fetch(buildNeighborhoodUrl(node.slug, 1), {
@@ -593,22 +537,18 @@ export default function App() {
               </div>
             </section>
 
-            <GraphTab
-              graphData={graphData}
-              graphStatus={graphStatus}
-              graphErrorMessage={graphErrorMessage}
-              graphView={graphView}
-              selectedGraphNode={selectedGraphNode}
-              onBack={handleGraphBack}
-              onBackToSearch={handleBackToSearchFromGraph}
-              onGraphNodeSelect={handleOpenGraphForEntry}
-              onSearchEntry={handleSearchEntryFromGraph}
-              onRetryGraph={handleRetryGraph}
-              relatedConcepts={relatedConcepts}
-              relatedStatus={relatedStatus}
-              relatedErrorMessage={relatedErrorMessage}
-              onOpenRelatedConcept={handleOpenGraphForEntry}
-            />
+        <GraphTab
+          graphData={graphData}
+          graphStatus={graphStatus}
+          graphErrorMessage={graphErrorMessage}
+          graphView={graphView}
+          selectedGraphNode={selectedGraphNode}
+          onBack={handleGraphBack}
+          onBackToSearch={handleBackToSearchFromGraph}
+          onGraphNodeSelect={handleOpenGraphForEntry}
+          onSearchEntry={handleSearchEntryFromGraph}
+          onRetryGraph={handleRetryGraph}
+        />
           </>
         )}
       </main>
