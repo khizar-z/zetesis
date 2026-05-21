@@ -27,6 +27,8 @@ DEFAULT_ENTRY_CHUNK_LIMIT = 8
 DEFAULT_RESULT_LIMIT = 7
 DEFAULT_RERANK_BATCH_SIZE = 32
 EXPECTED_DIMENSION = 768
+RESULT_TO_CHUNK_CANDIDATE_RATIO = 8
+RESULT_TO_ENTRY_CANDIDATE_RATIO = 6
 
 ENTRY_RERANK_OVERVIEW_WORDS = 220
 ENTRY_RERANK_SECTION_LIMIT = 18
@@ -615,12 +617,24 @@ class SearchService:
         if not cleaned_query:
             raise ValueError("Query must not be empty.")
 
-        chunk_limit = candidate_limit or self.config.candidate_limit
-        result_limit = result_limit or self.config.result_limit
-        entry_candidate_limit = max(self.config.entry_candidate_limit, chunk_limit)
+        requested_result_limit = result_limit or self.config.result_limit
+        base_chunk_limit = candidate_limit or self.config.candidate_limit
+        chunk_limit = max(
+            base_chunk_limit,
+            requested_result_limit * RESULT_TO_CHUNK_CANDIDATE_RATIO,
+        )
+        entry_candidate_limit = max(
+            self.config.entry_candidate_limit,
+            chunk_limit,
+            requested_result_limit * RESULT_TO_ENTRY_CANDIDATE_RATIO,
+        )
+        entry_expansion_limit = max(
+            self.config.entry_result_limit,
+            requested_result_limit,
+        )
 
         validate_positive("candidate_limit", chunk_limit)
-        validate_positive("result_limit", result_limit)
+        validate_positive("result_limit", requested_result_limit)
 
         query_embedding = self.embed_query(cleaned_query)
 
@@ -639,7 +653,7 @@ class SearchService:
 
             top_entry_slugs = [
                 item.candidate.entry_slug
-                for item in ranked_entries[: self.config.entry_result_limit]
+                for item in ranked_entries[:entry_expansion_limit]
             ]
             entry_score_map = {
                 item.candidate.entry_slug: item.final_score for item in ranked_entries
@@ -660,7 +674,7 @@ class SearchService:
             all_candidates,
             parent_entry_scores=entry_score_map,
         )
-        return [result.to_dict() for result in reranked[:result_limit]]
+        return [result.to_dict() for result in reranked[:requested_result_limit]]
 
 
 def create_search_service(

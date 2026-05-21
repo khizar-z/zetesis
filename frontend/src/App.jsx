@@ -7,6 +7,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:800
   /\/$/,
   "",
 );
+const RESULTS_PAGE_SIZE = 7;
 
 const EXAMPLE_QUERIES = [
   "relationship between free will and moral responsibility",
@@ -14,8 +15,8 @@ const EXAMPLE_QUERIES = [
   "what is truth",
 ];
 
-function buildSearchUrl(query) {
-  return `${API_BASE_URL}/search?q=${encodeURIComponent(query)}`;
+function buildSearchUrl(query, limit = RESULTS_PAGE_SIZE) {
+  return `${API_BASE_URL}/search?q=${encodeURIComponent(query)}&limit=${limit}`;
 }
 
 function buildNeighborhoodUrl(slug, hops = 1) {
@@ -113,6 +114,9 @@ export default function App() {
   const [status, setStatus] = useState("idle");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [requestedResultLimit, setRequestedResultLimit] = useState(RESULTS_PAGE_SIZE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreErrorMessage, setLoadMoreErrorMessage] = useState("");
 
   const [graphData, setGraphData] = useState(null);
   const [graphStatus, setGraphStatus] = useState("idle");
@@ -202,13 +206,19 @@ export default function App() {
     });
   }
 
-  async function runSearch(nextQuery) {
+  async function runSearch(
+    nextQuery,
+    { limit = RESULTS_PAGE_SIZE, preserveResults = false } = {},
+  ) {
     const cleanedQuery = nextQuery.trim();
     if (!cleanedQuery) {
       setStatus("error");
       setResults([]);
       setSubmittedQuery("");
       setErrorMessage("Enter a philosophical question or concept to search SEP.");
+      setRequestedResultLimit(RESULTS_PAGE_SIZE);
+      setLoadMoreErrorMessage("");
+      setIsLoadingMore(false);
       return;
     }
 
@@ -216,12 +226,21 @@ export default function App() {
     const controller = new AbortController();
     searchAbortControllerRef.current = controller;
 
-    setStatus("loading");
+    const isIncrementalLoad = preserveResults && results.length > 0;
+
+    if (isIncrementalLoad) {
+      setIsLoadingMore(true);
+    } else {
+      setStatus("loading");
+      setResults([]);
+    }
+
     setErrorMessage("");
+    setLoadMoreErrorMessage("");
     setSubmittedQuery(cleanedQuery);
 
     try {
-      const response = await fetch(buildSearchUrl(cleanedQuery), {
+      const response = await fetch(buildSearchUrl(cleanedQuery, limit), {
         signal: controller.signal,
       });
       const payload = await response.json().catch(() => null);
@@ -237,15 +256,24 @@ export default function App() {
       startTransition(() => {
         setResults(Array.isArray(payload) ? payload : []);
         setStatus("success");
+        setRequestedResultLimit(limit);
       });
     } catch (error) {
       if (error.name === "AbortError") {
         return;
       }
 
-      setResults([]);
-      setStatus("error");
-      setErrorMessage(error.message || "Search failed. Please try again.");
+      if (isIncrementalLoad) {
+        setLoadMoreErrorMessage(error.message || "Could not load more results.");
+      } else {
+        setResults([]);
+        setStatus("error");
+        setErrorMessage(error.message || "Search failed. Please try again.");
+      }
+    } finally {
+      if (isIncrementalLoad) {
+        setIsLoadingMore(false);
+      }
     }
   }
 
@@ -334,6 +362,9 @@ export default function App() {
       setStatus("idle");
       setSubmittedQuery("");
       setErrorMessage("");
+      setRequestedResultLimit(RESULTS_PAGE_SIZE);
+      setIsLoadingMore(false);
+      setLoadMoreErrorMessage("");
       setGraphData(null);
       setGraphStatus("idle");
       setGraphErrorMessage("");
@@ -407,6 +438,17 @@ export default function App() {
     void runSearch(example);
   }
 
+  function handleLoadMore() {
+    if (!submittedQuery || isLoadingMore) {
+      return;
+    }
+
+    void runSearch(submittedQuery, {
+      limit: requestedResultLimit + RESULTS_PAGE_SIZE,
+      preserveResults: true,
+    });
+  }
+
   const showInitialState = status === "idle" && results.length === 0 && !errorMessage;
   const showEmptyState = status === "success" && results.length === 0;
   const showResults = results.length > 0;
@@ -414,6 +456,7 @@ export default function App() {
   const entryCount = groupedResults.length;
   const topResult = results[0] || null;
   const isCenteredHome = route.page === "search" && showInitialState;
+  const shouldShowLoadMore = showResults && results.length === requestedResultLimit;
 
   return (
     <div className="page-shell">
@@ -535,6 +578,24 @@ export default function App() {
                         onOpenGraph={handleOpenGraphForEntry}
                       />
                     ))}
+                  </div>
+                  <div className="results-panel__load-more">
+                    {shouldShowLoadMore ? (
+                      <button
+                        className="results-panel__load-more-button"
+                        type="button"
+                        onClick={handleLoadMore}
+                        disabled={isLoadingMore}
+                      >
+                        {isLoadingMore ? "Loading more..." : "Load more"}
+                      </button>
+                    ) : null}
+
+                    {loadMoreErrorMessage ? (
+                      <p className="results-panel__load-more-error" role="alert">
+                        {loadMoreErrorMessage}
+                      </p>
+                    ) : null}
                   </div>
                 </>
               ) : null}
