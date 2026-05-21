@@ -15,7 +15,7 @@ from psycopg.rows import dict_row
 DEFAULT_MIN_EXPLICIT_DEGREE = 3
 
 ENTRY_EXISTS_SQL = """
-SELECT entry_slug, entry_title, subdiscipline
+SELECT entry_slug, entry_title, subdiscipline, intro_text
 FROM entries
 WHERE entry_slug = %s;
 """.strip()
@@ -36,7 +36,7 @@ ORDER BY slug;
 """.strip()
 
 NODES_BY_SLUG_SQL = """
-SELECT entry_slug, entry_title, subdiscipline
+SELECT entry_slug, entry_title, subdiscipline, intro_text
 FROM entries
 WHERE entry_slug = ANY(%s)
 ORDER BY entry_title, entry_slug;
@@ -102,6 +102,7 @@ class GraphNode:
     title: str
     subdiscipline: str | None
     degree: int
+    intro_text: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -109,6 +110,7 @@ class GraphNode:
             "title": self.title,
             "subdiscipline": self.subdiscipline,
             "degree": self.degree,
+            "intro_text": self.intro_text,
         }
 
 
@@ -246,6 +248,11 @@ class GraphService:
                     else str(row["subdiscipline"])
                 ),
                 degree=degrees.get(str(row["entry_slug"]), 0),
+                intro_text=(
+                    ""
+                    if row["intro_text"] is None
+                    else str(row["intro_text"]).strip()
+                ),
             ).to_dict()
             for row in node_rows
         ]

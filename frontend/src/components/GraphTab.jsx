@@ -19,6 +19,24 @@ function formatViewTitle(view, selectedNode) {
   return "SEP Concept Graph";
 }
 
+function truncateIntroText(text, maxLength = 360) {
+  const normalized = (text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const truncated = normalized.slice(0, maxLength);
+  const lastSpaceIndex = truncated.lastIndexOf(" ");
+  if (lastSpaceIndex <= maxLength * 0.6) {
+    return `${truncated.trimEnd()}...`;
+  }
+
+  return `${truncated.slice(0, lastSpaceIndex).trimEnd()}...`;
+}
+
 function GraphLegend() {
   return (
     <div className="graph-legend">
@@ -76,6 +94,7 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
   }
 
   const chipColor = getSubdisciplineColor(selectedNode.subdiscipline);
+  const introExcerpt = truncateIntroText(selectedNode.intro_text);
 
   return (
     <aside className="graph-info">
@@ -92,8 +111,7 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
       </div>
 
       <p className="graph-info__copy">
-        This panel updates when you click a node. Use it as a bridge back into passage search if
-        you want to read the entry itself rather than just its graph neighborhood.
+        {introExcerpt || "No introductory SEP passage is available for this entry yet."}
       </p>
 
       <button

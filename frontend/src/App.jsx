@@ -296,6 +296,7 @@ export default function App() {
       title: node.title || current?.title || "",
       subdiscipline: node.subdiscipline || current?.subdiscipline || null,
       degree: node.degree || current?.degree || 0,
+      intro_text: node.intro_text || current?.intro_text || "",
     }));
     setGraphView({
       kind: "neighborhood",
@@ -325,6 +326,7 @@ export default function App() {
         title: node.title || "",
         subdiscipline: node.subdiscipline || null,
         degree: node.degree || 0,
+        intro_text: node.intro_text || "",
       };
 
       startTransition(() => {
