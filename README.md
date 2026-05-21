@@ -62,8 +62,10 @@ The graph is intentionally local rather than global-first:
 - Vector storage: Postgres + `pgvector`
 - Backend: FastAPI
 - Frontend: React + Vite
+- Frontend hosting: Vercel
 - Local DB/dev container: Docker Compose
-- Intended hosting: Render (backend), Supabase (database)
+- Backend hosting: Render
+- Database hosting: Supabase
 
 ## Repository Layout
 
@@ -74,6 +76,7 @@ The graph is intentionally local rather than global-first:
 ├── graph.py                       Reusable graph retrieval service
 ├── eval.py                        Manual evaluation script
 ├── docker-compose.yml             Local Postgres/pgvector + API container
+├── render.yaml                    Render Blueprint for the backend
 ├── db/init/01-schema.sql          Database schema
 ├── scripts/
 │   ├── scrape_sep.py              SEP scraper
@@ -86,6 +89,7 @@ The graph is intentionally local rather than global-first:
 │   ├── load_entries_to_db.py      Entry loader for Postgres
 │   └── tag_subdisciplines.py      Subdiscipline tagging pass for graph coloring
 ├── frontend/                      React app
+│   └── vercel.json                SPA rewrite config for Vercel
 ├── sep_sections.json              Scraped sections
 ├── sep_chunks.json                Retrieval chunks
 ├── sep_entries.json               Entry-level search documents
@@ -128,6 +132,91 @@ Important variables:
 - `DATABASE_URL`: backend database connection string
 - `CORS_ALLOW_ORIGINS`: comma-separated frontend origins
 - `VITE_API_BASE_URL`: frontend URL for the FastAPI backend
+
+## Production Deployment
+
+The deployment path this repo is now prepared for is:
+
+- frontend on Vercel
+- backend on Render
+- database on Supabase
+
+Recommended production URLs:
+
+- `https://zetesis.example.com` for the frontend
+- `https://api.zetesis.example.com` for the backend
+
+### 1. Prepare Supabase
+
+Create a Supabase project and enable the `vector` extension. Then get a Postgres connection string from the Supabase Connect panel.
+
+For the Render backend, prefer a Supabase Session pooler connection string, or a Direct connection string if your environment supports it well. For one-time load scripts from your own machine, either a Direct connection or Session pooler connection is fine.
+
+Load the existing corpus into Supabase:
+
+```bash
+cp .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` to your Supabase Postgres connection string, then run:
+
+```bash
+.venv/bin/python scripts/load_chunks_to_db.py --truncate --drop-index-first
+.venv/bin/python scripts/load_entries_to_db.py --truncate --drop-index-first
+.venv/bin/python scripts/build_graph.py --semantic-threshold 0.85 --max-semantic-neighbors 5
+.venv/bin/python scripts/tag_subdisciplines.py
+```
+
+### 2. Deploy the backend to Render
+
+This repo now includes [render.yaml](./render.yaml), which defines a Docker-based Render web service and configures the `/health` endpoint as the Render health check.
+
+In Render:
+
+1. Create a new Blueprint or Web Service from this repository.
+2. Use the included `render.yaml` or select [Dockerfile.backend](./Dockerfile.backend) manually.
+3. Set these environment variables:
+
+- `DATABASE_URL=<your Supabase connection string>`
+- `CORS_ALLOW_ORIGINS=https://zetesis.example.com`
+
+The backend is now `PORT`-aware, so it will bind correctly on Render without any manual command override.
+
+Note: the first deploy can take longer than a typical FastAPI app because the embedding and reranking models may download when the service boots for the first time.
+
+### 3. Deploy the frontend to Vercel
+
+Create a new Vercel project from this same repository and set:
+
+- Root Directory: `frontend`
+- Framework Preset: `Vite`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+
+Set this environment variable in Vercel:
+
+- `VITE_API_BASE_URL=https://api.zetesis.example.com`
+
+The repo now includes [frontend/vercel.json](./frontend/vercel.json), which rewrites all SPA routes back to `index.html` so direct visits to URLs like `/graph/truth` work correctly on Vercel.
+
+### 4. Attach your domains
+
+The simplest production setup is:
+
+- attach `zetesis.example.com` to the Vercel frontend project
+- attach `api.zetesis.example.com` to the Render backend service
+
+Then add whatever DNS records Vercel and Render ask for in your DNS provider.
+
+### 5. Final production check
+
+After both deployments are live:
+
+1. Open `https://zetesis.example.com`
+2. Run a search
+3. Open a graph neighborhood
+4. Refresh a direct graph route such as `https://zetesis.example.com/graph/truth`
+5. Confirm the backend health endpoint responds at `https://api.zetesis.example.com/health`
 
 ## Install Dependencies
 

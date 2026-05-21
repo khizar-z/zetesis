@@ -103,6 +103,16 @@ def create_app(
             logger.exception("Database-backed search failed for query: %s", cleaned_query)
             raise HTTPException(status_code=503, detail="Database search is unavailable.") from exc
 
+    @app.get("/health")
+    async def health_endpoint(request: Request) -> dict[str, Any]:
+        search_ready = getattr(request.app.state, "search_service", None) is not None
+        graph_ready = getattr(request.app.state, "graph_service", None) is not None
+        return {
+            "status": "ok" if search_ready and graph_ready else "degraded",
+            "search_service": search_ready,
+            "graph_service": graph_ready,
+        }
+
     @app.get("/graph/full")
     async def graph_full_endpoint(request: Request) -> dict[str, Any]:
         service = get_graph_service(request)

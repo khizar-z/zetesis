@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: zetesis-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./Dockerfile.backend
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false
