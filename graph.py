@@ -4,15 +4,20 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote_plus
 
 import psycopg
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
 DEFAULT_MIN_EXPLICIT_DEGREE = 3
+LEAD_TEXT_CACHE_MAX_ENTRIES = 256
+ENTRY_URL_TEMPLATE = "https://plato.stanford.edu/entries/{slug}/"
 
 ENTRY_EXISTS_SQL = """
 SELECT entry_slug, entry_title, subdiscipline, intro_text
@@ -103,6 +108,7 @@ class GraphNode:
     subdiscipline: str | None
     degree: int
     intro_text: str
+    lead_text: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -111,6 +117,7 @@ class GraphNode:
             "subdiscipline": self.subdiscipline,
             "degree": self.degree,
             "intro_text": self.intro_text,
+            "lead_text": self.lead_text,
         }
 
 
@@ -152,6 +159,12 @@ def compute_degrees(
     return {slug: len(adjacent) for slug, adjacent in neighbors.items()}
 
 
+def clean_text(text: str) -> str:
+    text = text.replace("\xa0", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 class GraphService:
     """Load cached and dynamic concept graph views from Postgres."""
 
@@ -167,9 +180,53 @@ class GraphService:
         self.database_url = database_url
         self.min_explicit_degree = min_explicit_degree
         self._full_graph_cache: dict[str, Any] | None = None
+        self._lead_text_cache: dict[str, str] = {}
 
     def _connect(self) -> psycopg.Connection[dict[str, Any]]:
         return psycopg.connect(self.database_url, row_factory=dict_row)
+
+    def _build_entry_url(self, slug: str) -> str:
+        return ENTRY_URL_TEMPLATE.format(slug=slug)
+
+    def _fetch_live_lead_text(self, slug: str) -> str:
+        response = requests.get(
+            self._build_entry_url(slug),
+            timeout=30,
+            headers={
+                "User-Agent": (
+                    "Zetesis/0.1 (+https://github.com/placeholder/zetesis) "
+                    "SEP concept graph lead-text fetcher"
+                )
+            },
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        preamble = soup.select_one("#preamble")
+        if preamble is not None:
+            first_paragraph = preamble.find("p")
+            if first_paragraph is not None:
+                return clean_text(first_paragraph.get_text(" ", strip=True))
+
+        main_text = soup.select_one("#main-text")
+        if main_text is not None:
+            first_paragraph = main_text.find("p")
+            if first_paragraph is not None:
+                return clean_text(first_paragraph.get_text(" ", strip=True))
+
+        return ""
+
+    def _get_lead_text(self, slug: str) -> str:
+        cached = self._lead_text_cache.get(slug)
+        if cached is not None:
+            return cached
+
+        lead_text = self._fetch_live_lead_text(slug)
+        if len(self._lead_text_cache) >= LEAD_TEXT_CACHE_MAX_ENTRIES:
+            oldest_key = next(iter(self._lead_text_cache))
+            self._lead_text_cache.pop(oldest_key, None)
+        self._lead_text_cache[slug] = lead_text
+        return lead_text
 
     def _fetch_entry(self, conn: psycopg.Connection[dict[str, Any]], slug: str) -> dict[str, Any] | None:
         with conn.cursor() as cur:
@@ -234,9 +291,11 @@ class GraphService:
         node_rows: list[dict[str, Any]],
         explicit_edges: list[ExplicitEdge],
         semantic_edges: list[SemanticEdge],
+        lead_text_by_slug: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         node_slugs = {str(row["entry_slug"]) for row in node_rows}
         degrees = compute_degrees(node_slugs, explicit_edges, semantic_edges)
+        centered_lead_text = lead_text_by_slug or {}
 
         nodes = [
             GraphNode(
@@ -253,6 +312,7 @@ class GraphService:
                     if row["intro_text"] is None
                     else str(row["intro_text"]).strip()
                 ),
+                lead_text=centered_lead_text.get(str(row["entry_slug"]), ""),
             ).to_dict()
             for row in node_rows
         ]
@@ -348,7 +408,13 @@ class GraphService:
             explicit_edges = self._fetch_explicit_edges(conn, node_slugs)
             semantic_edges = self._fetch_semantic_edges(conn, node_slugs)
 
-        return self._build_graph_response(node_rows, explicit_edges, semantic_edges)
+        lead_text = self._get_lead_text(cleaned_slug)
+        return self._build_graph_response(
+            node_rows,
+            explicit_edges,
+            semantic_edges,
+            lead_text_by_slug={cleaned_slug: lead_text},
+        )
 
 def create_graph_service(
     *,

@@ -100,7 +100,7 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
   }
 
   const chipColor = getSubdisciplineColor(selectedNode.subdiscipline);
-  const introExcerpt = truncateIntroText(selectedNode.intro_text);
+  const introExcerpt = truncateIntroText(selectedNode.lead_text || selectedNode.intro_text);
   const sepEntryUrl = buildSepEntryUrl(selectedNode.slug);
 
   return (

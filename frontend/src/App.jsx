@@ -297,6 +297,7 @@ export default function App() {
       subdiscipline: node.subdiscipline || current?.subdiscipline || null,
       degree: node.degree || current?.degree || 0,
       intro_text: node.intro_text || current?.intro_text || "",
+      lead_text: node.lead_text || current?.lead_text || "",
     }));
     setGraphView({
       kind: "neighborhood",
@@ -327,6 +328,7 @@ export default function App() {
         subdiscipline: node.subdiscipline || null,
         degree: node.degree || 0,
         intro_text: node.intro_text || "",
+        lead_text: node.lead_text || "",
       };
 
       startTransition(() => {
@@ -616,10 +618,6 @@ export default function App() {
                   Zetesis
                 </button>
               </h1>
-              <p className="hero__copy">
-                Trace how a selected SEP entry connects through direct references and strict
-                semantic similarity.
-              </p>
             </section>
 
             <GraphTab
