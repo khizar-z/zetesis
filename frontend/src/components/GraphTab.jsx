@@ -37,6 +37,13 @@ function truncateIntroText(text, maxLength = 360) {
   return `${truncated.slice(0, lastSpaceIndex).trimEnd()}...`;
 }
 
+function buildSepEntryUrl(slug) {
+  if (!slug) {
+    return "";
+  }
+  return `https://plato.stanford.edu/entries/${encodeURIComponent(slug)}/`;
+}
+
 function GraphLegend() {
   return (
     <div className="graph-legend">
@@ -95,6 +102,7 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
 
   const chipColor = getSubdisciplineColor(selectedNode.subdiscipline);
   const introExcerpt = truncateIntroText(selectedNode.intro_text);
+  const sepEntryUrl = buildSepEntryUrl(selectedNode.slug);
 
   return (
     <aside className="graph-info">
@@ -114,13 +122,26 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
         {introExcerpt || "No introductory SEP passage is available for this entry yet."}
       </p>
 
-      <button
-        className="graph-info__button"
-        type="button"
-        onClick={() => onSearchEntry(selectedNode.title)}
-      >
-        Search this entry
-      </button>
+      <div className="graph-info__actions">
+        <button
+          className="graph-info__button"
+          type="button"
+          onClick={() => onSearchEntry(selectedNode.title)}
+        >
+          Search this entry
+        </button>
+
+        {sepEntryUrl ? (
+          <a
+            className="graph-info__button"
+            href={sepEntryUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open in SEP
+          </a>
+        ) : null}
+      </div>
     </aside>
   );
 }

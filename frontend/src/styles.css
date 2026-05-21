@@ -386,12 +386,16 @@ a {
 .graph-tab__back,
 .graph-tab__retry,
 .graph-info__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.76);
   color: var(--accent-strong);
   font-weight: 700;
   padding: 0.72rem 1rem;
+  text-decoration: none;
   transition:
     transform 180ms ease,
     background 180ms ease;
@@ -518,6 +522,11 @@ a {
   margin: 0;
   color: var(--muted);
   line-height: 1.62;
+}
+
+.graph-info__actions {
+  display: grid;
+  gap: 0.65rem;
 }
 
 .graph-legend {
