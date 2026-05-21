@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote_plus
@@ -29,6 +30,9 @@ DEFAULT_RERANK_BATCH_SIZE = 32
 EXPECTED_DIMENSION = 768
 RESULT_TO_CHUNK_CANDIDATE_RATIO = 8
 RESULT_TO_ENTRY_CANDIDATE_RATIO = 6
+SEARCH_CACHE_TTL_SECONDS = 600
+SEARCH_CACHE_MAX_ENTRIES = 32
+SEARCH_CACHE_PREFETCH_PAGES = 3
 
 ENTRY_RERANK_OVERVIEW_WORDS = 220
 ENTRY_RERANK_SECTION_LIMIT = 18
@@ -193,6 +197,14 @@ class SearchResult:
         }
 
 
+@dataclass
+class CachedSearchResults:
+    results: list[dict[str, Any]]
+    created_at: float
+    requested_window: int
+    is_exhaustive: bool
+
+
 def validate_positive(name: str, value: int) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be a positive integer.")
@@ -337,6 +349,7 @@ class SearchService:
         self.embedding_model = embedding_model
         self.reranker_model = reranker_model
         self.config = config or SearchConfig()
+        self._result_cache: dict[tuple[str, int | None], CachedSearchResults] = {}
 
         validate_positive("candidate_limit", self.config.candidate_limit)
         validate_positive("entry_candidate_limit", self.config.entry_candidate_limit)
@@ -350,6 +363,58 @@ class SearchService:
             raise ValueError(
                 f"Expected embedding dimension {EXPECTED_DIMENSION}, got {embedding_dimension}."
             )
+
+    def _cache_key(self, query: str, candidate_limit: int | None) -> tuple[str, int | None]:
+        return (query, candidate_limit)
+
+    def _purge_expired_cache_entries(self) -> None:
+        now = time.time()
+        expired_keys = [
+            key
+            for key, cached in self._result_cache.items()
+            if now - cached.created_at > SEARCH_CACHE_TTL_SECONDS
+        ]
+        for key in expired_keys:
+            self._result_cache.pop(key, None)
+
+    def _get_cached_results(
+        self,
+        query: str,
+        candidate_limit: int | None,
+    ) -> CachedSearchResults | None:
+        self._purge_expired_cache_entries()
+        return self._result_cache.get(self._cache_key(query, candidate_limit))
+
+    def _store_cached_results(
+        self,
+        query: str,
+        candidate_limit: int | None,
+        *,
+        requested_window: int,
+        results: list[dict[str, Any]],
+    ) -> CachedSearchResults:
+        self._purge_expired_cache_entries()
+
+        if len(self._result_cache) >= SEARCH_CACHE_MAX_ENTRIES:
+            oldest_key = min(
+                self._result_cache,
+                key=lambda key: self._result_cache[key].created_at,
+            )
+            self._result_cache.pop(oldest_key, None)
+
+        cached = CachedSearchResults(
+            results=results,
+            created_at=time.time(),
+            requested_window=requested_window,
+            is_exhaustive=len(results) < requested_window,
+        )
+        self._result_cache[self._cache_key(query, candidate_limit)] = cached
+        return cached
+
+    def _expanded_result_window(self, required_count: int, page_size: int) -> int:
+        block_size = max(page_size, page_size * SEARCH_CACHE_PREFETCH_PAGES)
+        blocks = max(1, (required_count + block_size - 1) // block_size)
+        return blocks * block_size
 
     def _embedding_dimension(self) -> int:
         if hasattr(self.embedding_model, "get_embedding_dimension"):
@@ -606,35 +671,34 @@ class SearchService:
         results.sort(key=lambda item: item.final_score, reverse=True)
         return results
 
-    def search(
+    def _compute_result_window(
         self,
         query: str,
         *,
         candidate_limit: int | None = None,
-        result_limit: int | None = None,
+        result_window: int,
     ) -> list[dict[str, Any]]:
         cleaned_query = query.strip()
         if not cleaned_query:
             raise ValueError("Query must not be empty.")
 
-        requested_result_limit = result_limit or self.config.result_limit
         base_chunk_limit = candidate_limit or self.config.candidate_limit
         chunk_limit = max(
             base_chunk_limit,
-            requested_result_limit * RESULT_TO_CHUNK_CANDIDATE_RATIO,
+            result_window * RESULT_TO_CHUNK_CANDIDATE_RATIO,
         )
         entry_candidate_limit = max(
             self.config.entry_candidate_limit,
             chunk_limit,
-            requested_result_limit * RESULT_TO_ENTRY_CANDIDATE_RATIO,
+            result_window * RESULT_TO_ENTRY_CANDIDATE_RATIO,
         )
         entry_expansion_limit = max(
             self.config.entry_result_limit,
-            requested_result_limit,
+            result_window,
         )
 
         validate_positive("candidate_limit", chunk_limit)
-        validate_positive("result_limit", requested_result_limit)
+        validate_positive("result_window", result_window)
 
         query_embedding = self.embed_query(cleaned_query)
 
@@ -674,7 +738,44 @@ class SearchService:
             all_candidates,
             parent_entry_scores=entry_score_map,
         )
-        return [result.to_dict() for result in reranked[:requested_result_limit]]
+        return [result.to_dict() for result in reranked[:result_window]]
+
+    def search(
+        self,
+        query: str,
+        *,
+        candidate_limit: int | None = None,
+        result_limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        cleaned_query = query.strip()
+        if not cleaned_query:
+            raise ValueError("Query must not be empty.")
+        if offset < 0:
+            raise ValueError("offset must be zero or greater.")
+
+        page_size = result_limit or self.config.result_limit
+        validate_positive("result_limit", page_size)
+
+        required_end = offset + page_size
+        cached = self._get_cached_results(cleaned_query, candidate_limit)
+        if cached is not None:
+            if cached.is_exhaustive or len(cached.results) >= required_end:
+                return cached.results[offset:required_end]
+
+        requested_window = self._expanded_result_window(required_end, page_size)
+        computed_results = self._compute_result_window(
+            cleaned_query,
+            candidate_limit=candidate_limit,
+            result_window=requested_window,
+        )
+        cached = self._store_cached_results(
+            cleaned_query,
+            candidate_limit,
+            requested_window=requested_window,
+            results=computed_results,
+        )
+        return cached.results[offset:required_end]
 
 
 def create_search_service(

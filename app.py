@@ -87,6 +87,7 @@ def create_app(
     async def search_endpoint(
         request: Request,
         q: str = Query(..., max_length=300),
+        offset: int = Query(0, ge=0),
         limit: int = Query(7, ge=1),
     ) -> list[dict[str, Any]]:
         cleaned_query = q.strip()
@@ -95,7 +96,7 @@ def create_app(
 
         service = get_search_service(request)
         try:
-            return service.search(cleaned_query, result_limit=limit)
+            return service.search(cleaned_query, result_limit=limit, offset=offset)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except psycopg.Error as exc:

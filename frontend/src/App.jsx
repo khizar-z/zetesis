@@ -15,8 +15,8 @@ const EXAMPLE_QUERIES = [
   "what is truth",
 ];
 
-function buildSearchUrl(query, limit = RESULTS_PAGE_SIZE) {
-  return `${API_BASE_URL}/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+function buildSearchUrl(query, { offset = 0, limit = RESULTS_PAGE_SIZE } = {}) {
+  return `${API_BASE_URL}/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`;
 }
 
 function buildNeighborhoodUrl(slug, hops = 1) {
@@ -114,7 +114,7 @@ export default function App() {
   const [status, setStatus] = useState("idle");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [requestedResultLimit, setRequestedResultLimit] = useState(RESULTS_PAGE_SIZE);
+  const [hasMoreResults, setHasMoreResults] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreErrorMessage, setLoadMoreErrorMessage] = useState("");
 
@@ -208,7 +208,7 @@ export default function App() {
 
   async function runSearch(
     nextQuery,
-    { limit = RESULTS_PAGE_SIZE, preserveResults = false } = {},
+    { offset = 0, limit = RESULTS_PAGE_SIZE, appendResults = false } = {},
   ) {
     const cleanedQuery = nextQuery.trim();
     if (!cleanedQuery) {
@@ -216,7 +216,7 @@ export default function App() {
       setResults([]);
       setSubmittedQuery("");
       setErrorMessage("Enter a philosophical question or concept to search SEP.");
-      setRequestedResultLimit(RESULTS_PAGE_SIZE);
+      setHasMoreResults(false);
       setLoadMoreErrorMessage("");
       setIsLoadingMore(false);
       return;
@@ -226,13 +226,14 @@ export default function App() {
     const controller = new AbortController();
     searchAbortControllerRef.current = controller;
 
-    const isIncrementalLoad = preserveResults && results.length > 0;
+    const isIncrementalLoad = appendResults && offset > 0 && results.length > 0;
 
     if (isIncrementalLoad) {
       setIsLoadingMore(true);
     } else {
       setStatus("loading");
       setResults([]);
+      setHasMoreResults(false);
     }
 
     setErrorMessage("");
@@ -240,7 +241,7 @@ export default function App() {
     setSubmittedQuery(cleanedQuery);
 
     try {
-      const response = await fetch(buildSearchUrl(cleanedQuery, limit), {
+      const response = await fetch(buildSearchUrl(cleanedQuery, { offset, limit }), {
         signal: controller.signal,
       });
       const payload = await response.json().catch(() => null);
@@ -254,9 +255,10 @@ export default function App() {
       }
 
       startTransition(() => {
-        setResults(Array.isArray(payload) ? payload : []);
+        const nextResults = Array.isArray(payload) ? payload : [];
+        setResults((current) => (isIncrementalLoad ? [...current, ...nextResults] : nextResults));
         setStatus("success");
-        setRequestedResultLimit(limit);
+        setHasMoreResults(nextResults.length === limit);
       });
     } catch (error) {
       if (error.name === "AbortError") {
@@ -268,6 +270,7 @@ export default function App() {
       } else {
         setResults([]);
         setStatus("error");
+        setHasMoreResults(false);
         setErrorMessage(error.message || "Search failed. Please try again.");
       }
     } finally {
@@ -362,7 +365,7 @@ export default function App() {
       setStatus("idle");
       setSubmittedQuery("");
       setErrorMessage("");
-      setRequestedResultLimit(RESULTS_PAGE_SIZE);
+      setHasMoreResults(false);
       setIsLoadingMore(false);
       setLoadMoreErrorMessage("");
       setGraphData(null);
@@ -444,8 +447,9 @@ export default function App() {
     }
 
     void runSearch(submittedQuery, {
-      limit: requestedResultLimit + RESULTS_PAGE_SIZE,
-      preserveResults: true,
+      offset: results.length,
+      limit: RESULTS_PAGE_SIZE,
+      appendResults: true,
     });
   }
 
@@ -456,7 +460,7 @@ export default function App() {
   const entryCount = groupedResults.length;
   const topResult = results[0] || null;
   const isCenteredHome = route.page === "search" && showInitialState;
-  const shouldShowLoadMore = showResults && results.length === requestedResultLimit;
+  const shouldShowLoadMore = showResults && (hasMoreResults || isLoadingMore);
 
   return (
     <div className="page-shell">
