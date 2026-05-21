@@ -90,7 +90,6 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
   if (!selectedNode) {
     return (
       <aside className="graph-info">
-        <p className="graph-info__eyebrow">Entry Focus</p>
         <h2>Pick an SEP entry to open its neighborhood.</h2>
         <p className="graph-info__copy">
           Search for an entry first, or open one from the results list. Once a neighborhood is
@@ -106,7 +105,6 @@ function GraphInfoPanel({ selectedNode, onSearchEntry }) {
 
   return (
     <aside className="graph-info">
-      <p className="graph-info__eyebrow">Entry Focus</p>
       <h2>{selectedNode.title}</h2>
 
       <div className="graph-info__chips">

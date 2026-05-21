@@ -565,6 +565,7 @@ export default function GraphCanvas({ data, focusedSlug, onNodeSelect }) {
       title: selectedNode.title,
       subdiscipline: selectedNode.subdiscipline,
       degree: selectedNode.degree,
+      intro_text: selectedNode.intro_text,
     });
   }
 
