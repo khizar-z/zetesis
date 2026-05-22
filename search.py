@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import time
@@ -21,18 +22,18 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-DEFAULT_CANDIDATE_LIMIT = 40
-DEFAULT_ENTRY_CANDIDATE_LIMIT = 40
+DEFAULT_CANDIDATE_LIMIT = 32
+DEFAULT_ENTRY_CANDIDATE_LIMIT = 32
 DEFAULT_ENTRY_RESULT_LIMIT = 8
-DEFAULT_ENTRY_CHUNK_LIMIT = 8
+DEFAULT_ENTRY_CHUNK_LIMIT = 6
 DEFAULT_RESULT_LIMIT = 7
 DEFAULT_RERANK_BATCH_SIZE = 32
 EXPECTED_DIMENSION = 768
-RESULT_TO_CHUNK_CANDIDATE_RATIO = 8
-RESULT_TO_ENTRY_CANDIDATE_RATIO = 6
+RESULT_TO_CHUNK_CANDIDATE_RATIO = 6
+RESULT_TO_ENTRY_CANDIDATE_RATIO = 4
 SEARCH_CACHE_TTL_SECONDS = 600
 SEARCH_CACHE_MAX_ENTRIES = 32
-SEARCH_CACHE_PREFETCH_PAGES = 3
+SEARCH_CACHE_PREFETCH_PAGES = 1
 
 ENTRY_RERANK_OVERVIEW_WORDS = 220
 ENTRY_RERANK_SECTION_LIMIT = 18
@@ -44,6 +45,8 @@ CHUNK_SECTION_BONUS_WEIGHT = 0.2
 
 ENTRY_COSINE_WEIGHT = 1.0
 ENTRY_TITLE_BONUS_WEIGHT = 1.0
+
+logger = logging.getLogger(__name__)
 
 LEXICAL_STOPWORDS = {
     "a",
@@ -677,7 +680,7 @@ class SearchService:
         *,
         candidate_limit: int | None = None,
         result_window: int,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, float | int]]:
         cleaned_query = query.strip()
         if not cleaned_query:
             raise ValueError("Query must not be empty.")
@@ -692,28 +695,35 @@ class SearchService:
             chunk_limit,
             result_window * RESULT_TO_ENTRY_CANDIDATE_RATIO,
         )
-        entry_expansion_limit = max(
-            self.config.entry_result_limit,
-            result_window,
-        )
+        entry_expansion_limit = self.config.entry_result_limit
 
         validate_positive("candidate_limit", chunk_limit)
         validate_positive("result_window", result_window)
 
+        embed_start = time.perf_counter()
         query_embedding = self.embed_query(cleaned_query)
+        embed_elapsed = time.perf_counter() - embed_start
 
         with self._connect() as conn:
+            chunk_retrieve_start = time.perf_counter()
             global_chunk_candidates = self._retrieve_chunk_candidates(
                 conn,
                 query_embedding,
                 candidate_limit=chunk_limit,
             )
+            chunk_retrieve_elapsed = time.perf_counter() - chunk_retrieve_start
+
+            entry_retrieve_start = time.perf_counter()
             entry_candidates = self._retrieve_entry_candidates(
                 conn,
                 query_embedding,
                 candidate_limit=entry_candidate_limit,
             )
+            entry_retrieve_elapsed = time.perf_counter() - entry_retrieve_start
+
+            entry_rerank_start = time.perf_counter()
             ranked_entries = self.rerank_entries(cleaned_query, entry_candidates)
+            entry_rerank_elapsed = time.perf_counter() - entry_rerank_start
 
             top_entry_slugs = [
                 item.candidate.entry_slug
@@ -722,23 +732,43 @@ class SearchService:
             entry_score_map = {
                 item.candidate.entry_slug: item.final_score for item in ranked_entries
             }
+            entry_chunk_retrieve_start = time.perf_counter()
             entry_expansion_candidates = self._retrieve_chunks_for_entries(
                 conn,
                 query_embedding,
                 top_entry_slugs,
                 per_entry_limit=self.config.entry_chunk_limit,
             )
+            entry_chunk_retrieve_elapsed = time.perf_counter() - entry_chunk_retrieve_start
 
         all_candidates = merge_chunk_candidates(
             global_chunk_candidates,
             entry_expansion_candidates,
         )
+        chunk_rerank_start = time.perf_counter()
         reranked = self.rerank_candidates(
             cleaned_query,
             all_candidates,
             parent_entry_scores=entry_score_map,
         )
-        return [result.to_dict() for result in reranked[:result_window]]
+        chunk_rerank_elapsed = time.perf_counter() - chunk_rerank_start
+
+        timings: dict[str, float | int] = {
+            "embed_ms": round(embed_elapsed * 1000, 1),
+            "chunk_retrieve_ms": round(chunk_retrieve_elapsed * 1000, 1),
+            "entry_retrieve_ms": round(entry_retrieve_elapsed * 1000, 1),
+            "entry_rerank_ms": round(entry_rerank_elapsed * 1000, 1),
+            "entry_chunk_retrieve_ms": round(entry_chunk_retrieve_elapsed * 1000, 1),
+            "chunk_rerank_ms": round(chunk_rerank_elapsed * 1000, 1),
+            "chunk_limit": chunk_limit,
+            "entry_candidate_limit": entry_candidate_limit,
+            "entry_expansion_limit": entry_expansion_limit,
+            "global_chunk_candidates": len(global_chunk_candidates),
+            "entry_candidates": len(entry_candidates),
+            "entry_expansion_candidates": len(entry_expansion_candidates),
+            "merged_candidates": len(all_candidates),
+        }
+        return [result.to_dict() for result in reranked[:result_window]], timings
 
     def search(
         self,
@@ -754,6 +784,7 @@ class SearchService:
         if offset < 0:
             raise ValueError("offset must be zero or greater.")
 
+        search_start = time.perf_counter()
         page_size = result_limit or self.config.result_limit
         validate_positive("result_limit", page_size)
 
@@ -761,10 +792,18 @@ class SearchService:
         cached = self._get_cached_results(cleaned_query, candidate_limit)
         if cached is not None:
             if cached.is_exhaustive or len(cached.results) >= required_end:
+                logger.info(
+                    "Search cache hit query=%r offset=%d page_size=%d cached_results=%d total_ms=%.1f",
+                    cleaned_query,
+                    offset,
+                    page_size,
+                    len(cached.results),
+                    (time.perf_counter() - search_start) * 1000,
+                )
                 return cached.results[offset:required_end]
 
         requested_window = self._expanded_result_window(required_end, page_size)
-        computed_results = self._compute_result_window(
+        computed_results, timings = self._compute_result_window(
             cleaned_query,
             candidate_limit=candidate_limit,
             result_window=requested_window,
@@ -774,6 +813,21 @@ class SearchService:
             candidate_limit,
             requested_window=requested_window,
             results=computed_results,
+        )
+        total_elapsed_ms = round((time.perf_counter() - search_start) * 1000, 1)
+        logger.info(
+            (
+                "Search computed query=%r offset=%d page_size=%d requested_window=%d "
+                "returned_results=%d cache=%s total_ms=%.1f timings=%s"
+            ),
+            cleaned_query,
+            offset,
+            page_size,
+            requested_window,
+            len(computed_results),
+            "miss",
+            total_elapsed_ms,
+            json.dumps(timings, sort_keys=True),
         )
         return cached.results[offset:required_end]
 
