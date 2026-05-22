@@ -9,8 +9,6 @@ It also includes a concept-graph view centered on SEP entries. The graph starts 
 - explicit edges: direct SEP cross-links from one entry to another
 - semantic edges: high-similarity entry pairs derived from averaged chunk embeddings
 
-![Zetesis interface preview](./docs/zetesis-preview.svg)
-
 ## What It Does
 
 - Scrapes SEP entries into section-level records
