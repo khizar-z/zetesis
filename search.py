@@ -25,7 +25,7 @@ from psycopg.rows import dict_row
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
-DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L4-v2"
 DEFAULT_CANDIDATE_LIMIT = 24
 DEFAULT_ENTRY_CANDIDATE_LIMIT = 24
 DEFAULT_ENTRY_RESULT_LIMIT = 6
@@ -39,6 +39,7 @@ SEARCH_CACHE_TTL_SECONDS = 600
 SEARCH_CACHE_MAX_ENTRIES = 32
 SEARCH_CACHE_PREFETCH_PAGES = 1
 SEARCH_SHARED_CACHE_NAMESPACE = "zetesis-search-cache"
+RERANKER_MODEL_ENV_VAR = "ZETESIS_RERANKER_MODEL"
 
 ENTRY_RERANK_OVERVIEW_WORDS = 220
 ENTRY_RERANK_SECTION_LIMIT = 18
@@ -1011,7 +1012,12 @@ def create_search_service(
 ) -> SearchService:
     load_dotenv()
     configure_runtime_threads()
-    search_config = config or SearchConfig()
+    search_config = config or SearchConfig(
+        reranker_model_name=os.getenv(
+            RERANKER_MODEL_ENV_VAR,
+            DEFAULT_RERANKER_MODEL,
+        ),
+    )
     resolved_database_url = database_url or resolve_database_url()
     embedding_model = embedding_model or SentenceTransformer(
         search_config.embedding_model_name,

@@ -56,7 +56,7 @@ The graph is intentionally local rather than global-first:
 
 - Scraping: `requests`, `BeautifulSoup`
 - Embeddings: `sentence-transformers/all-mpnet-base-v2`
-- Reranking: `cross-encoder/ms-marco-MiniLM-L-6-v2`
+- Reranking: `cross-encoder/ms-marco-MiniLM-L4-v2`
 - Vector storage: Postgres + `pgvector`
 - Backend: FastAPI
 - Frontend: React + Vite
@@ -129,6 +129,7 @@ Important variables:
 
 - `DATABASE_URL`: backend database connection string
 - `CORS_ALLOW_ORIGINS`: comma-separated frontend origins
+- `ZETESIS_RERANKER_MODEL`: optional override for the backend reranker model
 - `VITE_API_BASE_URL`: frontend URL for the FastAPI backend
 
 ## Production Deployment
