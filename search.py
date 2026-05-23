@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
 import logging
 import os
 import re
+import tempfile
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -34,6 +38,7 @@ RESULT_TO_ENTRY_CANDIDATE_RATIO = 4
 SEARCH_CACHE_TTL_SECONDS = 600
 SEARCH_CACHE_MAX_ENTRIES = 32
 SEARCH_CACHE_PREFETCH_PAGES = 1
+SEARCH_SHARED_CACHE_NAMESPACE = "zetesis-search-cache"
 
 ENTRY_RERANK_OVERVIEW_WORDS = 220
 ENTRY_RERANK_SECTION_LIMIT = 18
@@ -45,6 +50,15 @@ CHUNK_SECTION_BONUS_WEIGHT = 0.2
 
 ENTRY_COSINE_WEIGHT = 1.0
 ENTRY_TITLE_BONUS_WEIGHT = 1.0
+
+LOW_CONFIDENCE_RERANK_THRESHOLD = -2.0
+LOW_CONFIDENCE_COSINE_THRESHOLD = 0.3
+
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +261,28 @@ def normalize_lexical_text(text: str) -> str:
     return normalized.strip()
 
 
+def configure_runtime_threads() -> None:
+    try:
+        import torch
+    except Exception:  # noqa: BLE001
+        return
+
+    try:
+        num_threads = max(1, int(os.getenv("OMP_NUM_THREADS", "1")))
+    except ValueError:
+        num_threads = 1
+
+    try:
+        torch.set_num_threads(num_threads)
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        torch.set_num_interop_threads(1)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def lexical_tokens(text: str, *, drop_stopwords: bool = False) -> list[str]:
     tokens = normalize_lexical_text(text).split()
     if not drop_stopwords:
@@ -353,6 +389,7 @@ class SearchService:
         self.reranker_model = reranker_model
         self.config = config or SearchConfig()
         self._result_cache: dict[tuple[str, int | None], CachedSearchResults] = {}
+        self.shared_cache_dir = self._resolve_shared_cache_dir()
 
         validate_positive("candidate_limit", self.config.candidate_limit)
         validate_positive("entry_candidate_limit", self.config.entry_candidate_limit)
@@ -367,6 +404,15 @@ class SearchService:
                 f"Expected embedding dimension {EXPECTED_DIMENSION}, got {embedding_dimension}."
             )
 
+    def _resolve_shared_cache_dir(self) -> Path:
+        configured_root = os.getenv("ZETESIS_SEARCH_CACHE_DIR")
+        if configured_root:
+            cache_dir = Path(configured_root).expanduser()
+        else:
+            cache_dir = Path(tempfile.gettempdir()) / SEARCH_SHARED_CACHE_NAMESPACE
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+
     def _cache_key(self, query: str, candidate_limit: int | None) -> tuple[str, int | None]:
         return (query, candidate_limit)
 
@@ -379,6 +425,24 @@ class SearchService:
         ]
         for key in expired_keys:
             self._result_cache.pop(key, None)
+
+    def _remember_cached_results(
+        self,
+        query: str,
+        candidate_limit: int | None,
+        cached: CachedSearchResults,
+    ) -> CachedSearchResults:
+        self._purge_expired_cache_entries()
+
+        if len(self._result_cache) >= SEARCH_CACHE_MAX_ENTRIES:
+            oldest_key = min(
+                self._result_cache,
+                key=lambda key: self._result_cache[key].created_at,
+            )
+            self._result_cache.pop(oldest_key, None)
+
+        self._result_cache[self._cache_key(query, candidate_limit)] = cached
+        return cached
 
     def _get_cached_results(
         self,
@@ -396,23 +460,81 @@ class SearchService:
         requested_window: int,
         results: list[dict[str, Any]],
     ) -> CachedSearchResults:
-        self._purge_expired_cache_entries()
-
-        if len(self._result_cache) >= SEARCH_CACHE_MAX_ENTRIES:
-            oldest_key = min(
-                self._result_cache,
-                key=lambda key: self._result_cache[key].created_at,
-            )
-            self._result_cache.pop(oldest_key, None)
-
         cached = CachedSearchResults(
             results=results,
             created_at=time.time(),
             requested_window=requested_window,
             is_exhaustive=len(results) < requested_window,
         )
-        self._result_cache[self._cache_key(query, candidate_limit)] = cached
+        return self._remember_cached_results(query, candidate_limit, cached)
+
+    def _shared_cache_basename(self, query: str, candidate_limit: int | None) -> str:
+        digest = hashlib.sha256(
+            f"{candidate_limit!r}\0{query}".encode("utf-8")
+        ).hexdigest()
+        return digest
+
+    def _shared_cache_paths(self, query: str, candidate_limit: int | None) -> tuple[Path, Path]:
+        basename = self._shared_cache_basename(query, candidate_limit)
+        return (
+            self.shared_cache_dir / f"{basename}.json",
+            self.shared_cache_dir / f"{basename}.lock",
+        )
+
+    def _load_shared_cached_results(
+        self,
+        query: str,
+        candidate_limit: int | None,
+    ) -> CachedSearchResults | None:
+        data_path, _ = self._shared_cache_paths(query, candidate_limit)
+        if not data_path.exists():
+            return None
+
+        try:
+            payload = json.loads(data_path.read_text(encoding="utf-8"))
+            cached = CachedSearchResults(
+                results=list(payload["results"]),
+                created_at=float(payload["created_at"]),
+                requested_window=int(payload["requested_window"]),
+                is_exhaustive=bool(payload["is_exhaustive"]),
+            )
+        except Exception:  # noqa: BLE001
+            return None
+
+        if time.time() - cached.created_at > SEARCH_CACHE_TTL_SECONDS:
+            try:
+                data_path.unlink()
+            except FileNotFoundError:
+                pass
+            return None
+
         return cached
+
+    def _store_shared_cached_results(
+        self,
+        query: str,
+        candidate_limit: int | None,
+        cached: CachedSearchResults,
+    ) -> None:
+        data_path, _ = self._shared_cache_paths(query, candidate_limit)
+        payload = {
+            "results": cached.results,
+            "created_at": cached.created_at,
+            "requested_window": cached.requested_window,
+            "is_exhaustive": cached.is_exhaustive,
+        }
+        tmp_path = data_path.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp_path.replace(data_path)
+
+    def _with_shared_cache_lock(
+        self,
+        query: str,
+        candidate_limit: int | None,
+    ):
+        _, lock_path = self._shared_cache_paths(query, candidate_limit)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        return open(lock_path, "a+", encoding="utf-8")
 
     def _expanded_result_window(self, required_count: int, page_size: int) -> int:
         block_size = max(page_size, page_size * SEARCH_CACHE_PREFETCH_PAGES)
@@ -674,6 +796,16 @@ class SearchService:
         results.sort(key=lambda item: item.final_score, reverse=True)
         return results
 
+    def _is_low_confidence_result_set(self, results: list[SearchResult]) -> bool:
+        if not results:
+            return False
+
+        top_result = results[0]
+        return (
+            top_result.reranker_score < LOW_CONFIDENCE_RERANK_THRESHOLD
+            and top_result.cosine_score < LOW_CONFIDENCE_COSINE_THRESHOLD
+        )
+
     def _compute_result_window(
         self,
         query: str,
@@ -768,6 +900,11 @@ class SearchService:
             "entry_expansion_candidates": len(entry_expansion_candidates),
             "merged_candidates": len(all_candidates),
         }
+        if self._is_low_confidence_result_set(reranked):
+            timings["low_confidence_filtered"] = 1
+            return [], timings
+
+        timings["low_confidence_filtered"] = 0
         return [result.to_dict() for result in reranked[:result_window]], timings
 
     def search(
@@ -802,18 +939,50 @@ class SearchService:
                 )
                 return cached.results[offset:required_end]
 
+        shared_cached = self._load_shared_cached_results(cleaned_query, candidate_limit)
+        if shared_cached is not None:
+            if shared_cached.is_exhaustive or len(shared_cached.results) >= required_end:
+                self._remember_cached_results(cleaned_query, candidate_limit, shared_cached)
+                logger.info(
+                    "Search shared cache hit query=%r offset=%d page_size=%d cached_results=%d total_ms=%.1f",
+                    cleaned_query,
+                    offset,
+                    page_size,
+                    len(shared_cached.results),
+                    (time.perf_counter() - search_start) * 1000,
+                )
+                return shared_cached.results[offset:required_end]
+
         requested_window = self._expanded_result_window(required_end, page_size)
-        computed_results, timings = self._compute_result_window(
-            cleaned_query,
-            candidate_limit=candidate_limit,
-            result_window=requested_window,
-        )
-        cached = self._store_cached_results(
-            cleaned_query,
-            candidate_limit,
-            requested_window=requested_window,
-            results=computed_results,
-        )
+        with self._with_shared_cache_lock(cleaned_query, candidate_limit) as lock_handle:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            shared_cached = self._load_shared_cached_results(cleaned_query, candidate_limit)
+            if shared_cached is not None:
+                if shared_cached.is_exhaustive or len(shared_cached.results) >= required_end:
+                    self._remember_cached_results(cleaned_query, candidate_limit, shared_cached)
+                    logger.info(
+                        "Search shared cache wait-hit query=%r offset=%d page_size=%d cached_results=%d total_ms=%.1f",
+                        cleaned_query,
+                        offset,
+                        page_size,
+                        len(shared_cached.results),
+                        (time.perf_counter() - search_start) * 1000,
+                    )
+                    return shared_cached.results[offset:required_end]
+
+            computed_results, timings = self._compute_result_window(
+                cleaned_query,
+                candidate_limit=candidate_limit,
+                result_window=requested_window,
+            )
+            cached = self._store_cached_results(
+                cleaned_query,
+                candidate_limit,
+                requested_window=requested_window,
+                results=computed_results,
+            )
+            self._store_shared_cached_results(cleaned_query, candidate_limit, cached)
+
         total_elapsed_ms = round((time.perf_counter() - search_start) * 1000, 1)
         logger.info(
             (
@@ -841,6 +1010,7 @@ def create_search_service(
     config: SearchConfig | None = None,
 ) -> SearchService:
     load_dotenv()
+    configure_runtime_threads()
     search_config = config or SearchConfig()
     resolved_database_url = database_url or resolve_database_url()
     embedding_model = embedding_model or SentenceTransformer(

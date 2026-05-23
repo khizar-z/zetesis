@@ -9,7 +9,13 @@ User=YOUR_USERNAME
 Group=YOUR_USERNAME
 WorkingDirectory=/home/YOUR_USERNAME/zetesis
 EnvironmentFile=/home/YOUR_USERNAME/zetesis/.env
-ExecStart=/home/YOUR_USERNAME/zetesis/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Environment=OMP_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=NUMEXPR_NUM_THREADS=1
+Environment=TOKENIZERS_PARALLELISM=false
+Environment=ZETESIS_SEARCH_CACHE_DIR=/home/YOUR_USERNAME/zetesis/.cache/search
+ExecStart=/home/YOUR_USERNAME/zetesis/.venv/bin/gunicorn app:app -k uvicorn.workers.UvicornWorker --bind 127.0.0.1:8000 --workers 2 --timeout 60 --graceful-timeout 15 --max-requests 200 --max-requests-jitter 20
 Restart=always
 RestartSec=5
 
