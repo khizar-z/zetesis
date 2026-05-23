@@ -1,5 +1,7 @@
 # Zetesis
 
+Live site: [zetesis.khizar.ca](https://zetesis.khizar.ca)
+
 Semantic search over the Stanford Encyclopedia of Philosophy.
 
 Zetesis lets you type a philosophical question or concept and retrieve the most relevant SEP passages by meaning, not just keyword overlap. Each result links back to the exact SEP section it came from.
